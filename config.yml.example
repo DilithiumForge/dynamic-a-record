@@ -1,0 +1,27 @@
+providers:
+  - name: Cloudflare
+    api_user:
+    api_key: your-cloudflare-api-key
+    client_ip:
+    domains:
+      - fqdn: example1.com
+        subdomains:
+          - www
+          - api
+      - fqdn: example2.com
+        subdomains:
+          - www
+          - blog
+  - name: NameCheap
+    api_user: your-namecheap-api-user
+    api_key: your-namecheap-api-key
+    client_ip: your-client-ip
+    domains:
+      - fqdn: example3.com
+        subdomains:
+          - www
+          - shop
+      - fqdn: example4.com
+        subdomains:
+          - www
+          - forum

@@ -1,0 +1,206 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Text.Json;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
+
+namespace DNSUpdater
+{
+    class Program
+    {
+        private static readonly HttpClient httpClient = new HttpClient();
+
+        static async Task Main(string[] args)
+        {
+            if (args.Length < 1 || args.Length > 2)
+            {
+                Console.WriteLine("Usage: DNSUpdater <config_file_path> [ip_address]");
+                return;
+            }
+
+            string configPath = args[0];
+            string ipAddressOverride = args.Length == 2 ? args[1] : null;
+
+            var config = LoadConfig(configPath);
+            await ApplyEnvironmentOverrides(config, ipAddressOverride);
+
+            foreach (var provider in config.Providers)
+            {
+                IDNSProvider dnsProvider = CreateProvider(provider);
+                await UpdateDNSRecords(dnsProvider, provider.Domains, provider.IpAddress);
+            }
+        }
+
+        static Config LoadConfig(string path)
+        {
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .Build();
+
+            using (var reader = new StreamReader(path))
+            {
+                return deserializer.Deserialize<Config>(reader);
+            }
+        }
+
+        static async Task ApplyEnvironmentOverrides(Config config, string ipAddressOverride)
+        {
+            string globalIpAddress = null;
+
+            if (!string.IsNullOrEmpty(ipAddressOverride))
+            {
+                globalIpAddress = ipAddressOverride;
+            }
+            else
+            {
+                string envIpAddress = Environment.GetEnvironmentVariable("IP_ADDRESS");
+                if (!string.IsNullOrEmpty(envIpAddress))
+                {
+                    globalIpAddress = envIpAddress;
+                }
+                else
+                {
+                    globalIpAddress = await FetchPublicIpAddress();
+                }
+            }
+
+            foreach (var provider in config.Providers)
+            {
+                string envApiKey = Environment.GetEnvironmentVariable($"{provider.Name.ToUpper()}_API_KEY");
+                if (!string.IsNullOrEmpty(envApiKey))
+                {
+                    provider.ApiKey = envApiKey;
+                }
+
+                provider.IpAddress = globalIpAddress;
+            }
+
+            Console.WriteLine($"Using IP address: {globalIpAddress}");
+        }
+
+        static async Task<string> FetchPublicIpAddress()
+        {
+            try
+            {
+                var response = await httpClient.GetStringAsync("https://ipinfo.io/json");
+                var ipInfo = JsonSerializer.Deserialize<IpInfo>(response);
+                return ipInfo.Ip;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to fetch public IP address: {ex.Message}");
+                return null;
+            }
+        }
+
+        static IDNSProvider CreateProvider(Provider provider)
+        {
+            switch (provider.Name.ToLower())
+            {
+                case "cloudflare":
+                    return new CloudflareProvider(provider.ApiKey);
+                case "namecheap":
+                    return new NamecheapProvider(provider.ApiUser, provider.ApiKey, provider.IpAddress);
+                default:
+                    throw new NotSupportedException($"Provider {provider.Name} is not supported.");
+            }
+        }
+
+        static async Task UpdateDNSRecords(IDNSProvider provider, List<Domain> domains, string ipAddress)
+        {
+            foreach (var domain in domains)
+            {
+                foreach (var subdomain in domain.Subdomains)
+                {
+                    try
+                    {
+                        await provider.UpdateDNSRecord(domain.FQDN, subdomain, ipAddress);
+                        Console.WriteLine($"Updated DNS record for {subdomain}.{domain.FQDN} to {ipAddress}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to update DNS record for {subdomain}.{domain.FQDN}: {ex.Message}");
+                    }
+                }
+            }
+        }
+    }
+
+    class Config
+    {
+        public List<Provider> Providers { get; set; }
+    }
+
+    class Provider
+    {
+        public string Name { get; set; }
+        public string ApiKey { get; set; }
+        public string ApiUser { get; set; }
+        public string IpAddress { get; set; }
+        public List<Domain> Domains { get; set; }
+    }
+
+    class Domain
+    {
+        public string FQDN { get; set; }
+        public List<string> Subdomains { get; set; }
+    }
+
+    class IpInfo
+    {
+        public string Ip { get; set; }
+    }
+
+    interface IDNSProvider
+    {
+        Task UpdateDNSRecord(string domain, string subdomain, string ipAddress);
+    }
+
+    class CloudflareProvider : IDNSProvider
+    {
+        private readonly string _apiKey;
+        private readonly HttpClient _httpClient;
+
+        public CloudflareProvider(string apiKey)
+        {
+            _apiKey = apiKey;
+            _httpClient = new HttpClient();
+            _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+        }
+
+        public async Task UpdateDNSRecord(string domain, string subdomain, string ipAddress)
+        {
+            // Implement Cloudflare API calls here
+            // This is a placeholder implementation
+            await Task.Delay(100);
+            Console.WriteLine($"Cloudflare: Updated {subdomain}.{domain} to {ipAddress}");
+        }
+    }
+
+    class NamecheapProvider : IDNSProvider
+    {
+        private readonly string _apiUser;
+        private readonly string _apiKey;
+        private readonly string _clientIp;
+        private readonly HttpClient _httpClient;
+
+        public NamecheapProvider(string apiUser, string apiKey, string clientIp)
+        {
+            _apiUser = apiUser;
+            _apiKey = apiKey;
+            _clientIp = clientIp;
+            _httpClient = new HttpClient();
+        }
+
+        public async Task UpdateDNSRecord(string domain, string subdomain, string ipAddress)
+        {
+            // Implement Namecheap API calls here
+            // This is a placeholder implementation
+            await Task.Delay(100);
+            Console.WriteLine($"Namecheap: Updated {subdomain}.{domain} to {ipAddress}");
+        }
+    }
+}

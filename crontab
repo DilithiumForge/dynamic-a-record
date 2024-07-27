@@ -1,0 +1,2 @@
+# Run the dynamicarecord.dll every 10 minutes
+*/10 * * * * root /usr/bin/dotnet /app/dynamicarecord.dll /app/config.yml >> /var/log/cron.log 2>&1

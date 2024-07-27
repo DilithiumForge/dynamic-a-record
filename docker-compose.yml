@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  dynamicarecord:
+    build: .
+    container_name: dynamicarecord
+    volumes:
+      - ./config.yml:/app/config.yml
+      - ./crontab:/etc/cron.d/dynamicarecord-cron
+      - /var/log/cron.log:/var/log/cron.log
+    environment:
+      - CLOUDFLARE_API_KEY=${CLOUDFLARE_API_KEY}
+      - NAMECHEAP_API_KEY=${NAMECHEAP_API_KEY}
+    command: cron && tail -f /var/log/cron.log
